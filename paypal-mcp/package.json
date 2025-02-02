@@ -1,0 +1,23 @@
+{
+  "name": "paypal-mcp",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "workers-mcp docgen src/index.ts && wrangler deploy",
+    "dev": "wrangler dev",
+    "start": "wrangler dev",
+    "test": "vitest",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.7.5",
+    "@cloudflare/workers-types": "^4.20250321.0",
+    "typescript": "^5.5.2",
+    "vitest": "~3.0.7",
+    "wrangler": "^4.4.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "workers-mcp": "^0.0.13"
+  }
+}

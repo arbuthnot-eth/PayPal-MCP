@@ -1,0 +1,30 @@
+[mcp]
+name = "PayPal_Tools"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+workers_dev = true
+
+[mcp.tools]
+sayHello = { 
+  description = "A warm, friendly greeting from your new Workers MCP server.",
+  parameters = {
+    name = { type = "string", description = "the name of the person we are greeting." }
+  }
+}
+
+createPaypalOrder = { 
+  description = "Create a PayPal payment order",
+  parameters = {
+    amount = { type = "string", description = "The payment amount (e.g. '10.00')" },
+    currency = { type = "string", description = "The currency code (e.g. 'USD')", optional = true },
+    description = { type = "string", description = "Optional description of the payment", optional = true }
+  }
+}
+
+capturePaypalOrder = { 
+  description = "Capture a PayPal payment order",
+  parameters = {
+    orderId = { type = "string", description = "The PayPal order ID to capture" }
+  }
+}
+ 
