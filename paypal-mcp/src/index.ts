@@ -3,18 +3,27 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { ProxyToSelf } from 'workers-mcp'
 
+/**
+ * Configuration interface for PayPal API credentials and mode
+ */
 interface PayPalConfig {
   mode: 'sandbox' | 'live'
   clientId: string
   clientSecret: string
 }
 
+/**
+ * Interface for PayPal OAuth access token response
+ */
 interface PayPalAccessToken {
   access_token: string
   token_type: string
   expires_in: number
 }
 
+/**
+ * Interface for PayPal payment order request
+ */
 interface PayPalPayment {
   intent: 'CAPTURE' | 'AUTHORIZE'
   purchase_units: Array<{
@@ -43,6 +52,9 @@ interface CapturePaymentParams {
   orderId: string
 }
 
+/**
+ * Environment variables interface for the Worker
+ */
 export interface Env {
   PAYPAL_CLIENT_ID: string
   PAYPAL_CLIENT_SECRET: string
@@ -50,6 +62,9 @@ export interface Env {
   SHARED_SECRET: string
 }
 
+/**
+ * Main Worker class handling PayPal payment operations
+ */
 export default class MyWorker extends WorkerEntrypoint<Env> {
   private paypalConfig: PayPalConfig | null = null
 
@@ -69,6 +84,11 @@ export default class MyWorker extends WorkerEntrypoint<Env> {
     })
   }
 
+  /**
+   * Retrieves PayPal configuration from environment variables
+   * @returns {Promise<PayPalConfig>} PayPal configuration object
+   * @private
+   */
   private async getPayPalConfig(): Promise<PayPalConfig> {
     if (!this.paypalConfig) {
       this.paypalConfig = {
@@ -80,6 +100,11 @@ export default class MyWorker extends WorkerEntrypoint<Env> {
     return this.paypalConfig
   }
 
+  /**
+   * Gets an OAuth access token from PayPal API
+   * @returns {Promise<string>} PayPal access token
+   * @private
+   */
   private async getAccessToken(): Promise<string> {
     const config = await this.getPayPalConfig()
     const credentials = btoa(`${config.clientId}:${config.clientSecret}`)
@@ -102,7 +127,7 @@ export default class MyWorker extends WorkerEntrypoint<Env> {
   }
 
   /**
-   * Create a PayPal payment order
+   * Creates a new PayPal payment order
    * @param {string} amount - The payment amount (e.g. "10.00")
    * @param {string} [currency="USD"] - The currency code (e.g. "USD")
    * @param {string} [description] - Optional description of the payment
@@ -162,9 +187,9 @@ export default class MyWorker extends WorkerEntrypoint<Env> {
   }
 
   /**
-   * Capture a PayPal payment order
+   * Captures (completes) a PayPal payment order
    * @param {string} orderId - The PayPal order ID to capture
-   * @returns {Promise<any>} The capture details
+   * @returns {Promise<any>} The capture details including payment status and amount
    */
   async capturePaypalOrder(orderId: string): Promise<any> {
     try {
@@ -203,18 +228,25 @@ export default class MyWorker extends WorkerEntrypoint<Env> {
   }
 
   /**
-   * @ignore
+   * Handles incoming HTTP requests
+   * @param {Request} request - The incoming HTTP request
+   * @returns {Promise<Response>} The HTTP response
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
     
-    // Handle success route
+    // Handle success route for payment completion
     if (url.pathname === '/success') {
       const token = url.searchParams.get('token')
-      const PayerID = url.searchParams.get('PayerID')
       
       if (!token) {
-        return this.jsonResponse({ error: 'Missing token parameter' }, 400)
+        return new Response(JSON.stringify({ error: 'Missing token parameter' }), {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            ...this.corsHeaders,
+          }
+        })
       }
 
       try {
@@ -222,9 +254,8 @@ export default class MyWorker extends WorkerEntrypoint<Env> {
         const captureResult = await this.capturePaypalOrder(token)
         const resultData = JSON.parse(captureResult.content[0].text)
         
-        if (resultData.success) {
-          return new Response(`
-            <html>
+        const htmlResponse = resultData.success 
+          ? `<html>
               <head>
                 <title>Payment Successful</title>
                 <style>
@@ -241,16 +272,8 @@ export default class MyWorker extends WorkerEntrypoint<Env> {
                   <p>Amount: $${resultData.data.purchase_units[0].payments.captures[0].amount.value} ${resultData.data.purchase_units[0].payments.captures[0].amount.currency_code}</p>
                 </div>
               </body>
-            </html>
-          `, {
-            headers: {
-              'Content-Type': 'text/html',
-              ...this.corsHeaders,
-            }
-          })
-        } else {
-          return new Response(`
-            <html>
+            </html>`
+          : `<html>
               <head>
                 <title>Payment Error</title>
                 <style>
@@ -262,14 +285,14 @@ export default class MyWorker extends WorkerEntrypoint<Env> {
                 <h1 class="error">Payment Error</h1>
                 <p>${resultData.error || 'An error occurred processing the payment.'}</p>
               </body>
-            </html>
-          `, {
-            headers: {
-              'Content-Type': 'text/html',
-              ...this.corsHeaders,
-            }
-          })
-        }
+            </html>`
+
+        return new Response(htmlResponse, {
+          headers: {
+            'Content-Type': 'text/html',
+            ...this.corsHeaders,
+          }
+        })
       } catch (error: any) {
         return new Response(`
           <html>
