@@ -53,6 +53,22 @@ export interface Env {
 export default class MyWorker extends WorkerEntrypoint<Env> {
   private paypalConfig: PayPalConfig | null = null
 
+  private corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  }
+
+  private jsonResponse(data: any, status: number = 200): Response {
+    return new Response(JSON.stringify(data), {
+      status,
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.corsHeaders,
+      },
+    })
+  }
+
   private async getPayPalConfig(): Promise<PayPalConfig> {
     if (!this.paypalConfig) {
       this.paypalConfig = {
@@ -186,35 +202,100 @@ export default class MyWorker extends WorkerEntrypoint<Env> {
     }
   }
 
-  // /**
-  //  * A warm, friendly greeting from your new Workers MCP server.
-  //  * @param {string} name - The name of the person we are greeting.
-  //  * @returns {string} The contents of our greeting.
-  //  */
-  // sayHello(name: string) {
-  //   return `Hello from an MCP Worker, ${name}!`
-  // }
-
-  private corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  }
-
-  private jsonResponse(data: any, status: number = 200): Response {
-    return new Response(JSON.stringify(data), {
-      status,
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.corsHeaders,
-      },
-    })
-  }
-
   /**
    * @ignore
    */
   async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    
+    // Handle success route
+    if (url.pathname === '/success') {
+      const token = url.searchParams.get('token')
+      const PayerID = url.searchParams.get('PayerID')
+      
+      if (!token) {
+        return this.jsonResponse({ error: 'Missing token parameter' }, 400)
+      }
+
+      try {
+        // Capture the payment using the order ID (token)
+        const captureResult = await this.capturePaypalOrder(token)
+        const resultData = JSON.parse(captureResult.content[0].text)
+        
+        if (resultData.success) {
+          return new Response(`
+            <html>
+              <head>
+                <title>Payment Successful</title>
+                <style>
+                  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; text-align: center; }
+                  .success { color: #28a745; font-size: 24px; margin-bottom: 20px; }
+                  .details { background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: left; }
+                </style>
+              </head>
+              <body>
+                <h1 class="success">Payment Successful!</h1>
+                <div class="details">
+                  <p>Order ID: ${token}</p>
+                  <p>Status: ${resultData.data.status}</p>
+                  <p>Amount: $${resultData.data.purchase_units[0].payments.captures[0].amount.value} ${resultData.data.purchase_units[0].payments.captures[0].amount.currency_code}</p>
+                </div>
+              </body>
+            </html>
+          `, {
+            headers: {
+              'Content-Type': 'text/html',
+              ...this.corsHeaders,
+            }
+          })
+        } else {
+          return new Response(`
+            <html>
+              <head>
+                <title>Payment Error</title>
+                <style>
+                  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; text-align: center; }
+                  .error { color: #dc3545; font-size: 24px; margin-bottom: 20px; }
+                </style>
+              </head>
+              <body>
+                <h1 class="error">Payment Error</h1>
+                <p>${resultData.error || 'An error occurred processing the payment.'}</p>
+              </body>
+            </html>
+          `, {
+            headers: {
+              'Content-Type': 'text/html',
+              ...this.corsHeaders,
+            }
+          })
+        }
+      } catch (error: any) {
+        return new Response(`
+          <html>
+            <head>
+              <title>Payment Error</title>
+              <style>
+                body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; text-align: center; }
+                .error { color: #dc3545; font-size: 24px; margin-bottom: 20px; }
+              </style>
+            </head>
+            <body>
+              <h1 class="error">Payment Error</h1>
+              <p>${error.message}</p>
+            </body>
+          </html>
+        `, {
+          status: 500,
+          headers: {
+            'Content-Type': 'text/html',
+            ...this.corsHeaders,
+          }
+        })
+      }
+    }
+
+    // Handle all other routes through ProxyToSelf
     return new ProxyToSelf(this).fetch(request)
   }
 }
