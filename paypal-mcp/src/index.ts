@@ -53,6 +53,18 @@ interface CapturePaymentParams {
 }
 
 /**
+ * Interface for PayPal refund request
+ */
+interface PayPalRefundRequest {
+  amount?: {
+    currency_code: string
+    value: string
+  }
+  invoice_id?: string
+  note_to_payer?: string
+}
+
+/**
  * Environment variables interface for the Worker
  */
 export interface Env {
@@ -221,6 +233,105 @@ export default class MyWorker extends WorkerEntrypoint<Env> {
           text: JSON.stringify({
             success: false,
             error: `Failed to capture PayPal payment: ${error.message}`
+          })
+        }]
+      }
+    }
+  }
+
+  /**
+   * Refunds a captured payment
+   * @param {string} captureId - The PayPal-generated ID for the captured payment to refund
+   * @param {string} [amount] - Optional amount to refund. If not specified, refunds the full amount
+   * @param {string} [currency] - Currency code for the refund amount (e.g. 'USD'). Required if amount is specified
+   * @param {string} [note] - Optional note to the payer about the refund
+   * @returns {Promise<any>} The refund details including status and amount
+   */
+  async refundPaypalCapture(captureId: string, amount?: string, currency: string = 'USD', note?: string): Promise<any> {
+    try {
+      const accessToken = await this.getAccessToken()
+      const config = await this.getPayPalConfig()
+
+      const refundRequest: PayPalRefundRequest = {}
+      
+      if (amount) {
+        refundRequest.amount = {
+          currency_code: currency,
+          value: amount
+        }
+      }
+
+      if (note) {
+        refundRequest.note_to_payer = note
+      }
+
+      const response = await fetch(`https://api${config.mode === 'sandbox' ? '.sandbox' : ''}.paypal.com/v2/payments/captures/${captureId}/refund`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(refundRequest)
+      })
+
+      const result = await response.json()
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: response.ok,
+            data: result
+          })
+        }]
+      }
+    } catch (error: any) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: false,
+            error: `Failed to process refund: ${error.message}`
+          })
+        }]
+      }
+    }
+  }
+
+  /**
+   * Gets details of a PayPal order
+   * @param {string} orderId - The PayPal order ID to check
+   * @returns {Promise<any>} The order details including status and payment info
+   */
+  async getPaypalOrder(orderId: string): Promise<any> {
+    try {
+      const accessToken = await this.getAccessToken()
+      const config = await this.getPayPalConfig()
+
+      const response = await fetch(`https://api${config.mode === 'sandbox' ? '.sandbox' : ''}.paypal.com/v2/checkout/orders/${orderId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const result = await response.json()
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: response.ok,
+            data: result
+          })
+        }]
+      }
+    } catch (error: any) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: false,
+            error: `Failed to get order details: ${error.message}`
           })
         }]
       }

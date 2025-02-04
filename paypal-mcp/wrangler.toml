@@ -20,4 +20,21 @@ capturePaypalOrder = {
     orderId = { type = "string", description = "The PayPal order ID to capture" }
   }
 }
+
+refundPaypalCapture = { 
+  description = "Refund a captured PayPal payment",
+  parameters = {
+    captureId = { type = "string", description = "The PayPal-generated ID for the captured payment to refund" },
+    amount = { type = "string", description = "Optional amount to refund. If not specified, refunds the full amount", optional = true },
+    currency = { type = "string", description = "Currency code for the refund amount (e.g. 'USD')", optional = true },
+    note = { type = "string", description = "Optional note to the payer about the refund", optional = true }
+  }
+}
+
+getPayPalOrder = { 
+  description = "Get details of a PayPal order",
+  parameters = {
+    orderId = { type = "string", description = "The PayPal order ID to check" }
+  }
+}
  
